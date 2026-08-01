@@ -1,189 +1,360 @@
 # ============================================================
 # Coffee Powder Packing Readiness Decision Logic
-# ============================================================
-# Arduino serial format:
-# moisture,red,green,blue,status
+# Industry Upgrade Version
+#
+# Arduino Serial Format:
+#
+# moisture,r,g,b,temperature,humidity,status
 #
 # Example:
-# 552,320,382,328,PASS
-# 330,399,454,376,HOLD
+# 500,409,582,474,34.4,35.7,PASS
 #
-# Note:
-# TCS3200 values are sensor frequency/pulse readings.
-# These are NOT normal camera RGB 0-255 color values.
-# TCS3200 readings depend on chamber light, sensor distance,
-# sample height, and sensor angle.
 # ============================================================
 
 
+
 # ============================================================
-# COLOR REFERENCE VALUES
-# ============================================================
-# Final chamber accepted / correct coffee powder readings:
-# R approximately 271 - 422
-# G approximately 355 - 475
-# B approximately 305 - 355
+# FINAL COLOR CALIBRATION
 #
-# Accepted reference average selected:
-# R = 324, G = 392, B = 329
+# Based on real device testing
 #
-# Distance logic:
-# PASS = close to accepted normal coffee powder
-# WARN = slight roast/color variation
-# HOLD = large/rejected color variation
-# ============================================================
-
-REFERENCE_R = 324
-REFERENCE_G = 392
-REFERENCE_B = 329
-
-COLOR_PASS_DISTANCE = 145
-COLOR_WARN_DISTANCE = 190
-
-
-# ============================================================
-# MOISTURE THRESHOLDS
-# ============================================================
-# Higher value = dry/stable
-# Lower value  = wet/risky
+# GOOD COFFEE SAMPLE:
+# R = 386
+# G = 618
+# B = 462
 #
-# PASS = moisture_raw >= 430
-# WARN = 350 <= moisture_raw < 430
-# HOLD = moisture_raw < 350
 # ============================================================
+
+
+REFERENCE_R = 386
+REFERENCE_G = 618
+REFERENCE_B = 462
+
+
+
+COLOR_PASS_DISTANCE = 120
+COLOR_WARN_DISTANCE = 200
+
+
+
+# ============================================================
+# MOISTURE CALIBRATION
+#
+# GOOD:
+# ~500
+#
+# BAD:
+# ~240
+#
+# ============================================================
+
 
 MOISTURE_PASS_LIMIT = 430
-MOISTURE_WARN_LIMIT = 350
+MOISTURE_WARN_LIMIT = 300
 
 
-def color_distance(r, g, b, ref_r=REFERENCE_R, ref_g=REFERENCE_G, ref_b=REFERENCE_B):
-    """
-    Calculate distance between current TCS3200 reading and accepted reference color.
 
-    Smaller distance = closer to normal accepted coffee powder color.
-    Larger distance  = rejected / inconsistent roast color variation.
-    """
+# ============================================================
+# COLOR DISTANCE
+# ============================================================
 
-    return ((r - ref_r) ** 2 + (g - ref_g) ** 2 + (b - ref_b) ** 2) ** 0.5
+def color_distance(r,g,b):
+
+    return (
+        (r-REFERENCE_R)**2 +
+        (g-REFERENCE_G)**2 +
+        (b-REFERENCE_B)**2
+    ) ** 0.5
 
 
-def classify_moisture(moisture_raw):
-    """
-    Classify moisture status using calibrated threshold values.
-    """
 
-    if moisture_raw >= MOISTURE_PASS_LIMIT:
+# ============================================================
+# MOISTURE CLASSIFICATION
+# ============================================================
+
+def classify_moisture(moisture):
+
+    if moisture >= MOISTURE_PASS_LIMIT:
         return "PASS"
 
-    if MOISTURE_WARN_LIMIT <= moisture_raw < MOISTURE_PASS_LIMIT:
+
+    elif moisture >= MOISTURE_WARN_LIMIT:
         return "WARN"
 
-    return "HOLD"
+
+    else:
+        return "HOLD"
 
 
-def classify_color(r, g, b):
-    """
-    Classify roast/color consistency using TCS3200 color distance.
 
-    Correct/accepted powder example:
-    Around R=324, G=392, B=329 -> PASS
+# ============================================================
+# COLOR CLASSIFICATION
+# ============================================================
 
-    Slight variation:
-    Distance between 146 and 190 -> WARN
+def classify_color(r,g,b):
 
-    Rejected/large color variation:
-    Distance above 190 -> HOLD
-    """
+    distance = color_distance(r,g,b)
 
-    distance = color_distance(r, g, b)
 
     if distance <= COLOR_PASS_DISTANCE:
         return "PASS"
 
-    if distance <= COLOR_WARN_DISTANCE:
+
+    elif distance <= COLOR_WARN_DISTANCE:
         return "WARN"
 
-    return "HOLD"
+
+    else:
+        return "HOLD"
 
 
-def combine_status(moisture_status, color_status):
-    """
-    Final decision uses worst-case logic.
 
-    If moisture OR color is HOLD -> final HOLD
-    Else if moisture OR color is WARN -> final WARN
-    Else final PASS
-    """
+
+# ============================================================
+# FINAL QUALITY DECISION
+# ============================================================
+
+def combine_status(moisture_status,color_status):
+
 
     if moisture_status == "HOLD" or color_status == "HOLD":
         return "HOLD"
 
+
+
     if moisture_status == "WARN" or color_status == "WARN":
         return "WARN"
+
+
 
     return "PASS"
 
 
-def calculate_readiness_score(moisture_status, color_status):
-    """
-    Calculate readiness score for dashboard visualization.
-    """
+
+
+# ============================================================
+# RECOVERY RECOMMENDATION
+# Panel Comment Solution
+# ============================================================
+
+def generate_recommendation(
+        moisture_status,
+        color_status,
+        temperature,
+        humidity
+):
+
+
+    problems = []
+    recommendations = []
+
+
+
+    if moisture_status == "HOLD":
+
+        problems.append(
+            "High moisture variation detected"
+        )
+
+        recommendations.append(
+            "Increase drying duration before packing"
+        )
+
+
+
+    elif moisture_status == "WARN":
+
+        problems.append(
+            "Moisture level requires attention"
+        )
+
+        recommendations.append(
+            "Perform additional drying inspection"
+        )
+
+
+
+    if color_status == "HOLD":
+
+        problems.append(
+            "Coffee color inconsistency detected"
+        )
+
+        recommendations.append(
+            "Check roasting temperature and roasting time"
+        )
+
+
+
+    elif color_status == "WARN":
+
+        problems.append(
+            "Slight roast color variation detected"
+        )
+
+        recommendations.append(
+            "Review roasting parameters"
+        )
+
+
+
+    if humidity > 75:
+
+        recommendations.append(
+            "Control storage humidity conditions"
+        )
+
+
+
+    if len(problems)==0:
+
+        return {
+            "issue":"No quality issues detected",
+            "recommendation":"Ready for packing"
+        }
+
+
+
+    return {
+
+        "issue":" + ".join(problems),
+
+        "recommendation":
+            " + ".join(recommendations)
+
+    }
+
+
+
+
+# ============================================================
+# CONFIDENCE SCORE
+# ============================================================
+
+def calculate_confidence(
+        moisture_status,
+        color_status
+):
+
+
+    if moisture_status=="PASS" and color_status=="PASS":
+        return 95
+
+
+
+    if moisture_status=="WARN" or color_status=="WARN":
+        return 70
+
+
+
+    return 35
+
+
+
+
+
+# ============================================================
+# READINESS SCORE
+# ============================================================
+
+def calculate_readiness_score(
+        moisture_status,
+        color_status
+):
+
 
     score = 100
 
-    if moisture_status == "WARN":
-        score -= 25
-    elif moisture_status == "HOLD":
+
+
+    if moisture_status=="WARN":
+        score -= 20
+
+    elif moisture_status=="HOLD":
         score -= 50
 
-    if color_status == "WARN":
+
+
+    if color_status=="WARN":
         score -= 20
-    elif color_status == "HOLD":
+
+    elif color_status=="HOLD":
         score -= 40
 
-    return max(score, 0)
 
+
+    return max(score,0)
+
+
+
+
+
+# ============================================================
+# SERIAL DATA PARSER
+# ============================================================
 
 def parse_arduino_line(line):
-    """
-    Parse Arduino serial output.
 
-    Expected Arduino output:
-    moisture,red,green,blue,status
-
-    Example:
-    552,320,382,328,PASS
-    330,399,454,376,HOLD
-
-    Returns:
-    moisture, r, g, b, arduino_status
-    """
 
     if not line:
         return None
 
-    line = line.strip()
 
-    # Ignore debug lines or invalid serial noise
+
     if "," not in line:
         return None
 
-    parts = line.split(",")
 
-    if len(parts) < 5:
+
+    parts = line.strip().split(",")
+
+
+
+    if len(parts) < 7:
         return None
 
+
+
     try:
-        moisture = int(parts[0].strip())
-        r = int(parts[1].strip())
-        g = int(parts[2].strip())
-        b = int(parts[3].strip())
-        arduino_status = parts[4].strip().upper()
 
-        if arduino_status not in ["PASS", "WARN", "HOLD"]:
-            return None
+        moisture = int(parts[0])
 
-        return moisture, r, g, b, arduino_status
+        r = int(parts[1])
 
-    except ValueError:
+        g = int(parts[2])
+
+        b = int(parts[3])
+
+
+        temperature = float(parts[4])
+
+        humidity = float(parts[5])
+
+
+        status = parts[6].upper()
+
+
+
+        return {
+
+            "moisture":moisture,
+
+            "red":r,
+
+            "green":g,
+
+            "blue":b,
+
+            "temperature":temperature,
+
+            "humidity":humidity,
+
+            "arduino_status":status
+
+        }
+
+
+
+    except:
+
         return None
